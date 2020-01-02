@@ -4,19 +4,20 @@
       <UnitFrame v-for="(enemyUnit, index) in enemyUnits" :key="index" :unit="enemyUnit" :active="activeUnit === enemyUnit"></UnitFrame>
     </div>
     <div class="body" :style="{ 'background-image': `url(${background})` }">
+      <transition name="slideIn">
+        <div class="actionpanel" v-if="activeUnitPlayable && activeUnit.hp > 0">
+          <ActionPanel
+            :unit="activeUnit"
+            :friendlyUnits="friendlyUnits"
+            :unfriendlyUnits="unfriendlyUnits"
+            @action="handleAction($event)"
+          ></ActionPanel>
+        </div>
+      </transition>
       <CombatLog
         class="combatlog"
         :entries="combatLog"
       ></CombatLog>
-      <DialogPanel class="dialogpanel"></DialogPanel>
-      <ActionPanel
-        class="actionpanel"
-        v-if="activeUnitPlayable && activeUnit.hp > 0"
-        :unit="activeUnit"
-        :friendlyUnits="friendlyUnits"
-        :unfriendlyUnits="unfriendlyUnits"
-        @action="handleAction($event)"
-      ></ActionPanel>
     </div>
     <div class="party unit-frames">
       <UnitFrame v-for="(partyUnit, index) in partyUnits" :key="index" :unit="partyUnit" :active="activeUnit === partyUnit"></UnitFrame>
@@ -222,6 +223,23 @@ export default {
   background-repeat: no-repeat;
   background-size: 110%;
   overflow: hidden;
+  display: flex;
+  flex-direction: row-reverse;
+}
+.combatlog {
+  flex: 1;
+}
+.actionpanel {
+  height: 100%;
+  width: 300px;
+  overflow: hidden;
+}
+
+.slideIn-enter-active, .slideIn-leave-active {
+  transition: width .5s ease-in-out;
+}
+.slideIn-enter, .slideIn-leave-to {
+  width: 0px;
 }
 </style>
 
@@ -237,5 +255,14 @@ html, body, #app {
 }
 .combat-screen-component * {
   box-sizing: border-box;
+
+  &::-webkit-scrollbar {
+    width: 5px;
+    height: 8px;
+    background-color: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+      background: #000; 
+  }
 }
 </style>

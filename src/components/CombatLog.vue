@@ -1,12 +1,18 @@
 <template>
-    <div class="combatlog">
+    <div class="combatlog" ref="log">
         <p v-for="(entry, index) in entries" :key="index">{{ entry }}</p>
     </div>
 </template>
 
 <script>
 export default {
-    props: ['entries']
+    props: ['entries'],
+    watch: {
+        async entries() {
+            await this.$nextTick();
+            this.$refs.log.scrollTo(0, this.$refs.log.scrollHeight);
+        }
+    }
 }
 </script>
 
@@ -14,8 +20,13 @@ export default {
 .combatlog {
     padding: 10px;
     display: flex;
-    flex-direction: column-reverse;
-    max-width: 50%;
+    flex-direction: column;
+    height: 100%;
+    overflow: auto;
+
+    &::-webkit-scrollbar-thumb {
+      background: #FFF; 
+    }
 }
 p {
     margin: 0;

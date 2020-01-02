@@ -1,64 +1,86 @@
 <template>
     <div class="action-panel">
-        <div class="backdrop"></div>
-        <div class="panel">
-            <button v-for="ability in unit.abilities" :key="ability.name" :disabled="ability.curcd > 0" @click="sendAction(ability)">
+        <TargetPanel v-if="targetOptions" :targets="targetOptions" @target="setTarget($event)" @back="clearAbility()"></TargetPanel>
+        <template v-else>
+            <button v-for="ability in unit.abilities" :key="ability.name" :disabled="ability.curcd > 0" @click="selectAction(ability)">
                 {{ ability.name }}
                 <span class="cooldown">Cooldown: {{ ability.curcd }}/{{ ability.cd }} turns</span>
             </button>
-            <button @click="sendAction(null)">
+            <button @click="selectAction(null)">
                 Do nothing
                 <span class="cooldown">Wait 1 turn</span>
             </button>
-        </div>
+        </template>
     </div>
 </template>
 
 <script>
+import TargetPanel from './TargetPanel';
+
 export default {
     props: ['unit', 'friendlyUnits', 'unfriendlyUnits'],
-    methods: {
-        sendAction(ability) {
-            const targets = [];
-            if (ability) {
-                if (ability.target === 'choose-enemy') { // unfriendly unit with lowest HP > 0
-                    targets.push(this.unfriendlyUnits.slice().sort((u1, u2) => u1.hp - u2.hp).find((u) => u.hp > 0));
-                } else if (ability.target === 'all-enemy') { // All enemy units
-                    targets.push(... this.unfriendlyUnits);
-                } else if (ability.target === 'choose-friendly') { // friendly unit with lowest HP > 0
-                    targets.push(this.friendlyUnits.slice().sort((u1, u2) => (u1.hp / u1.maxhp) - (u2.hp / u2.maxhp)).find((u) => u.hp > 0));
-                } else if (ability.target === 'all-friendly') { // All friendly units
-                    targets.push(... this.friendlyUnits);
+    data() {
+        return {
+            ability: null,
+        };
+    },
+    computed: {
+        targetOptions() {
+            if (this.ability) {
+                if (this.ability.target === 'choose-enemy') {
+                    return this.unfriendlyUnits;
+                } else if (this.ability.target === 'choose-friendly') {
+                    return this.friendlyUnits;
+                } else if (this.ability.target === 'dead-enemy') {
+                    return this.unfriendlyUnits.filter((u) => u.hp === 0);
+                } else if (this.ability.target === 'dead-friendly') {
+                    return this.friendlyUnits.filter((u) => u.hp === 0);
                 }
             }
-            
-            this.$emit('action', { ability , targets });
+            return null;
         }
+    },
+    methods: {
+        clearAbility() {
+            this.ability = null;
+        },
+        setTarget(target) {
+            this.$emit('action', { ability: this.ability, targets: [target ]});
+        },
+        selectAction(ability) {
+            if (ability === null) {
+                return this.$emit('action', { ability, targets: [] });
+            }
+
+            if (ability.target === 'self') {
+                return this.$emit('action', { ability, targets: [ this.unit ] });
+            }
+            if (ability.target === 'random-friendly') {
+                return this.$emit('action', { ability, targets: [ this.friendlyUnits.slice().sort(() => (Math.random() - .5) * 2).pop() ]});
+            }
+            if (ability.target === 'random-enemy') {
+                return this.$emit('action', { ability, targets: [ this.unfriendlyUnits.slice().sort(() => (Math.random() - .5) * 2).pop() ]});
+            }
+            if (ability.target === 'all-friendly') {
+                return this.$emit('action', { ability, targets: this.friendlyUnits.slice() });
+            }
+            if (ability.target === 'all-enemy') {
+                return this.$emit('action', { ability, targets: this.unfriendlyUnits.slice() });
+            }
+            if (['choose-friendly', 'choose-enemy', 'dead-friendly', 'dead-enemy'].includes(ability.target)) {
+                this.ability = ability;
+                return;
+            }
+        }
+    },
+    components: {
+        TargetPanel,
     },
 }
 </script>
 
 <style lang="scss" scoped>
     .action-panel {
-        z-index: 1;
-        position: absolute;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        right: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-    .backdrop {
-        position: absolute;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        right: 0;
-        background-color: rgba(0, 0, 0, .5);
-    }
-    .panel {
         position: relative;
         display: flex;
         flex-direction: column;
@@ -66,8 +88,10 @@ export default {
         padding: 50px;
         background-color: #e2e1e0;
         box-shadow: 0 19px 38px rgba(0,0,0,0.30), 0 15px 12px rgba(0,0,0,0.22);
+        width: 300px;
         height: 100%;
         overflow-y: auto;
+        pointer-events: auto;
 
         button {
             background-color: #FFF;
