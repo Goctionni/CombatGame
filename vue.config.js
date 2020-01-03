@@ -10,7 +10,7 @@ module.exports = {
         extract: false,
     },
 
-    publicPath: '/CombatGame/',
+    publicPath: '.',
     outputDir: 'docs', // this is because github doesnt let us configure the github-pages path
     assetsDir: 'images'
 }
