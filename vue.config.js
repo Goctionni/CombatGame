@@ -5,7 +5,12 @@ module.exports = {
             splitChunks: false
         }
     },
+
     css: {
         extract: false,
     },
+
+    publicPath: '/CombatGame/',
+    outputDir: 'docs', // this is because github doesnt let us configure the github-pages path
+    assetsDir: 'images'
 }

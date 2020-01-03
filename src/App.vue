@@ -5,7 +5,7 @@
     </div>
     <div class="body" :style="{ 'background-image': `url(${background})` }">
       <transition name="slideIn">
-        <div class="actionpanel" v-if="activeUnitPlayable && activeUnit.hp > 0">
+        <div class="actionpanel" v-if="!turnComplete && activeUnitPlayable && activeUnit.hp > 0">
           <ActionPanel
             :unit="activeUnit"
             :friendlyUnits="friendlyUnits"
@@ -18,6 +18,12 @@
         class="combatlog"
         :entries="combatLog"
       ></CombatLog>
+      <transition name="fadeIn">
+        <div class="progress-controls" v-if="turnComplete">
+          <button type="button" class="continue" title="Continue" @click="nextTurn()"></button>
+          <button type="button" class="skip" title="skip" @click="enableSkipTurns()"></button>
+        </div>
+      </transition>
     </div>
     <div class="party unit-frames">
       <UnitFrame v-for="(partyUnit, index) in partyUnits" :key="index" :unit="partyUnit" :active="activeUnit === partyUnit"></UnitFrame>
@@ -42,6 +48,8 @@ export default {
       partyUnits: [ ... this.party ],
       enemyUnits: [ ... this.enemies ],
       turnIndex: 0,
+      turnComplete: false,
+      skipTurns: false,
       combatLog: [],
       dialog: [],
       result: '',
@@ -67,7 +75,56 @@ export default {
       return !this.activeUnitInParty ? this.partyUnits : this.enemyUnits;
     },
   },
+  watch: {
+    activeUnit() {
+      // If all units in party are dead
+      if (this.endGameCheck()) return;
+
+      // If the current unit is dead, skip
+      if (this.activeUnit.hp <= 0) {
+        this.turnIndex++;
+        return;
+      }
+
+      // Turn is not complete, unit can perform action
+      this.turnComplete = false;
+
+      // If the current unit is playable, we dont need to do anything
+      if (this.activeUnitPlayable) {
+        this.skipTurns = false;
+        return;
+      }
+
+      // Else, perform an NPC action, but do it after a short delay to emulate short thinking time
+      setTimeout(this.performNPCAction.bind(this), 250);
+    },
+    turnComplete() {
+      if (this.turnComplete && this.skipTurns) this.nextTurn();
+    }
+  },  
   methods: {
+    endGameCheck() {
+      if (this.partyUnits.every((u) => u.hp === 0)) {
+        this.combatLog.push('Your party is dead, you lose');
+        this.result = 'Defeat';
+        if (this.callback) this.callback(false);
+        return true;
+      } else if (this.enemyUnits.every((u) => u.hp === 0)) {
+        this.combatLog.push('All enemies are dead, you win');
+        this.result = 'Victory';
+        if (this.callback) this.callback(true);
+        return true;
+      }
+    },
+    nextTurn() {
+      if (!this.turnComplete) return;
+      this.turnIndex++;
+    },
+    enableSkipTurns() {
+      if (!this.turnComplete) return;
+      this.skipTurns = true;
+      this.nextTurn();
+    },
     handleAction({ ability, targets }) {
       // Reduce all cooldowns for this unit's abilities
       this.activeUnit.abilities.forEach((a) => {
@@ -108,72 +165,43 @@ export default {
           }
         });
 
-        // console.log({ unit: this.activeUnit, rawdamage, ability, targets })
         // Put the ability on cooldown
         ability.curcd = ability.cd;
       }
-      // TODO: Check if someone is left alive on both sides
 
       // Then let the next person do stuff
-      this.turnIndex++;
-    }
-  },
-  watch: {
-    activeUnit() {
-      // If all units in party are dead
-      if (this.partyUnits.every((u) => u.hp === 0)) {
-        this.combatLog.push('Your party is dead, you lose');
-        this.result = 'Defeat';
-        if (this.callback) this.callback(false);
-        return;
-      } else if (this.enemyUnits.every((u) => u.hp === 0)) {
-        this.combatLog.push('All enemies are dead, you win');
-        this.result = 'Victory';
-        if (this.callback) this.callback(true);
-        return;
-      }
-
-      // If the current unit is dead, skip
-      if (this.activeUnit.hp <= 0) {
-        this.turnIndex++;
-        return;
-      }
-      // If the current unit is playable, we dont need to do anything
-      if (this.activeUnitPlayable) return;
-      // Else, we need to come up with something to do, but do it after a short delay
-      // Make the delay shorter if there are no playable units left
-      const delay = this.allUnits.some((unit) => unit.isPlayable) ? 300 : 100;
-      setTimeout(() => {
-        const isPartyUnit = this.partyUnits.some((u) => u === this.activeUnit);
-        const ability = this.activeUnit.abilities.find((a) => a.curcd === 0);
-        const targets  = [];
-        if (ability) {
-          if (ability.target === 'choose-enemy') {
-            if (isPartyUnit) {
-              // Choose EnemyUnit with lowest HP > 0
-              targets.push(this.enemyUnits.slice().sort((u1, u2) => u1.hp - u2.hp).find((u) => u.hp > 0));
-            } else {
-              // Choose PartyUnit with highest MaxHP
-              targets.push(this.partyUnits.slice().sort((u1, u2) => u2.maxhp - u1.maxhp).find((u) => u.hp > 0));
-            }
-          } else if (ability.target === 'all-enemy') {
-            if (isPartyUnit) targets.push(... this.enemyUnits);
-            else targets.push(... this.partyUnits);
-          } else if (ability.target === 'choose-friendly') {
-            if (isPartyUnit) {
-              // Choose PartyUnit with lowest HP% > 0
-              targets.push(this.partyUnits.slice().sort((u1, u2) => (u1.hp / u1.maxhp) - (u2.hp / u2.maxhp)).find((u) => u.hp > 0));
-            } else {
-              // Choose EnemyUnit with lowest HP% > 0
-              targets.push(this.enemyUnits.slice().sort((u1, u2) => (u1.hp / u1.maxhp) - (u2.hp / u2.maxhp)).find((u) => u.hp > 0));
-            }
-          } else if (ability.target === 'all-friendly') {
-            if (!isPartyUnit) targets.push(... this.enemyUnits);
-            else targets.push(... this.partyUnits);
+      this.turnComplete = true;
+    },
+    performNPCAction() {
+      const isPartyUnit = this.partyUnits.some((u) => u === this.activeUnit);
+      const ability = this.activeUnit.abilities.find((a) => a.curcd === 0);
+      const targets  = [];
+      if (ability) {
+        if (ability.target === 'choose-enemy') {
+          if (isPartyUnit) {
+            // Choose EnemyUnit with lowest HP > 0
+            targets.push(this.enemyUnits.slice().sort((u1, u2) => u1.hp - u2.hp).find((u) => u.hp > 0));
+          } else {
+            // Choose PartyUnit with highest MaxHP
+            targets.push(this.partyUnits.slice().sort((u1, u2) => u2.maxhp - u1.maxhp).find((u) => u.hp > 0));
           }
+        } else if (ability.target === 'all-enemy') {
+          if (isPartyUnit) targets.push(... this.enemyUnits);
+          else targets.push(... this.partyUnits);
+        } else if (ability.target === 'choose-friendly') {
+          if (isPartyUnit) {
+            // Choose PartyUnit with lowest HP% > 0
+            targets.push(this.partyUnits.slice().sort((u1, u2) => (u1.hp / u1.maxhp) - (u2.hp / u2.maxhp)).find((u) => u.hp > 0));
+          } else {
+            // Choose EnemyUnit with lowest HP% > 0
+            targets.push(this.enemyUnits.slice().sort((u1, u2) => (u1.hp / u1.maxhp) - (u2.hp / u2.maxhp)).find((u) => u.hp > 0));
+          }
+        } else if (ability.target === 'all-friendly') {
+          if (!isPartyUnit) targets.push(... this.enemyUnits);
+          else targets.push(... this.partyUnits);
         }
-        this.handleAction({ ability, targets: targets.filter((t) => t) });
-      }, delay);
+      }
+      this.handleAction({ ability, targets: targets.filter((t) => t) });
     }
   },
   mounted() {
@@ -233,6 +261,68 @@ export default {
   height: 100%;
   width: 300px;
   overflow: hidden;
+  z-index: 2;
+}
+.progress-controls {
+  position: absolute;
+  bottom: 10px;
+  right: 0;
+  width: 120px;
+  z-index: 1;
+  white-space: nowrap;
+  overflow: hidden;
+
+  button + button {
+    margin-left: 0;
+  }
+
+  button {
+    position: relative;
+    background-color: #FFF;
+    border: 0;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    margin: 10px;
+    cursor: pointer;
+    outline: 0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+
+    &:hover {
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.19), 0 6px 6px rgba(0, 0, 0, 0.23);
+    }
+
+    &:active {
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+    }
+
+    &::before, &::after {
+      content: '';
+      position: absolute;
+      display: block;
+      width: 0; 
+      height: 0; 
+      border-top: 8px solid transparent;
+      border-bottom: 8px solid transparent;
+      border-left: 10px solid #000;
+      top: 12px;
+      left: 16px;
+    }
+
+    &.skip {
+      background-color: #FEE;
+
+      &::before {
+        margin-left: -5px;
+        border-left-color: #300;
+      }
+      &::after {
+        margin-left: 5px;
+        border-left-color: #300;
+      }
+    }
+  }
 }
 
 .slideIn-enter-active, .slideIn-leave-active {
@@ -240,6 +330,13 @@ export default {
 }
 .slideIn-enter, .slideIn-leave-to {
   width: 0px;
+}
+
+.fadeIn-enter-active, .fadeIn-leave-active {
+  transition: opacity .5s ease-in-out;
+}
+.fadeIn-enter, .fadeIn-leave-to {
+  opacity: 0;
 }
 </style>
 
